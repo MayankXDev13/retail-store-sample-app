@@ -1,8 +1,7 @@
 # Build Stage
 FROM public.ecr.aws/amazonlinux/amazonlinux:2023 as build-env
 
-# We tell DNF not to install Recommends and Suggests packages, keeping our
-# installed set of packages as minimal as possible.
+# Install required packages for build
 RUN dnf --setopt=install_weak_deps=False install -q -y \
     maven \
     java-21-amazon-corretto-headless \
@@ -17,23 +16,26 @@ ARG JAR_PATH
 VOLUME /tmp
 WORKDIR /
 
+# Copy Maven wrapper and make it executable
 COPY .mvn .mvn
 COPY mvnw .
+RUN chmod +x mvnw
+
+# Copy project descriptor
 COPY pom.xml .
 
+# Pre-download dependencies for better caching
 RUN ./mvnw dependency:go-offline -B -q
 
+# Copy source and build JAR
 COPY ./src ./src
-
 RUN ./mvnw -DskipTests package -q && \
     mv /target/carts-0.0.1-SNAPSHOT.jar /app.jar
 
 # Package Stage
 FROM public.ecr.aws/amazonlinux/amazonlinux:2023
 
-# We tell DNF not to install Recommends and Suggests packages, which are
-# weak dependencies in DNF terminology, thus keeping our installed set of
-# packages as minimal as possible.
+# Install only runtime dependencies
 RUN dnf --setopt=install_weak_deps=False install -q -y \
     java-21-amazon-corretto-headless \
     shadow-utils \
